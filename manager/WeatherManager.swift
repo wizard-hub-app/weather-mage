@@ -7,6 +7,7 @@
 
 import Foundation
 import WeatherKit
+import CoreLocation
 
 class WeatherManager{
     static let sharedd = WeatherManager()
@@ -33,32 +34,33 @@ class WeatherManager{
 
     public init() {}
 
-    public func weather(for location: CLLocation) {
+    public func weather(for location: CLLocation) async -> CurrentWeather? {
         self.alerts = nil
         self.current = nil
         self.daily = nil
         self.hourly = nil
         self.minute = nil
         self.availability = nil
+        
+        
+        do {
+            let weather = try await weatherService.weather(
+                for: location,
+                including: .alerts, .current, .daily, .hourly, .minute, .availability
+            )
 
-        Task {
-            do {
-                let weather = try await weatherService.weather(
-                    for: location,
-                    including: .alerts, .current, .daily, .hourly, .minute, .availability
-                )
-
-                DispatchQueue.main.async { [unowned self] in
-                    self.alerts = weather.0
-                    self.current = weather.1
-                    self.daily = weather.2
-                    self.hourly = weather.3
-                    self.minute = weather.4
-                    self.availability = weather.5
-                }
-            } catch {
-                print(error)
+            DispatchQueue.main.async { [unowned self] in
+                self.alerts = weather.0
+                self.current = weather.1
+                self.daily = weather.2
+                self.hourly = weather.3
+                self.minute = weather.4
+                self.availability = weather.5
             }
+            return weather.1
+        } catch {
+            print(error)
+            return nil
         }
     }
 }

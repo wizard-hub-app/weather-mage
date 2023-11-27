@@ -7,11 +7,16 @@
 
 import SwiftUI
 import WeatherKit
+import CoreLocation
+import SDWebImageSwiftUI
 
 struct WeatherArtView: View {
-    @State private var weatherImage: UIImage?
-    @State private var weatherPoem: String = "Gentle sun, warm rays alight,\nUpon the meadow, bright and light.\nTrees in whispers, skies so clear,\nIn this moment, peace draws near."
-    @State private var cityName: String = "Weather Art"
+    @State private var weatherImageURL: String?
+    @State private var weatherPoem: String? = "Gentle sun, warm rays alight,\nUpon the meadow, bright and light.\nTrees in whispers, skies so clear,\nIn this moment, peace draws near."
+    @State private var cityName: String?
+    @State private var weather: CurrentWeather?
+    @State private var temperature: Int?
+    @State private var weatherStatus: String?
     
     private var locatoinManager = LocationManager()
     var body: some View {
@@ -24,16 +29,29 @@ struct WeatherArtView: View {
                     }
                     .padding()
                 }
-                .navigationTitle(cityName)
+                .navigationTitle(cityName ?? "")
                 .navigationBarTitleDisplayMode(.inline)
                 .onAppear(perform: {
                     locatoinManager.manager.startUpdatingLocation()
                 })
             }
             .onReceive(NotificationCenter.default.publisher(for: .purchaseDidFinish), perform: { notification in
-                if let userInfo = notification.userInfo as? [String: String] {
-                    if let cityName = userInfo["city"] {
+                if let userInfo = notification.userInfo as? [String: Any] {
+                    if let cityName = userInfo["city"] as? String, let location = userInfo["location"] as? CLLocation {
                         self.cityName = cityName
+                        Task{
+                            self.weather = await WeatherManager.sharedd.weather(for: location)
+                            self.temperature = Int(self.weather?.temperature.value ?? 0)
+                            self.weatherStatus = self.weather?.condition.rawValue ?? ""
+                            if let temperature = self.temperature, let weatherStatus = self.weatherStatus {
+                                let response = await APIManager().getAIWeather(from: cityName, withWeather: weatherStatus, andTemperature: "\(temperature)")
+                                self.weatherPoem = response?["poem"]
+                                self.weatherImageURL = response?["image_url"]
+                            }
+                            print(("\(weather?.temperature.value ?? 0)" ))
+                        }
+                        
+                        
                         locatoinManager.manager.stopUpdatingLocation()
                     }
                 }
@@ -42,38 +60,33 @@ struct WeatherArtView: View {
     
     var weatherInfoSection: some View {
         HStack {
-            Text("温度：24°C")
+            Text("温度：\(temperature ?? 0)°C")
             Spacer()
-            Text("湿度: 60%")
+            Text(weatherStatus ?? "")
             Spacer()
-            Text("风速: 5 km/h")
         }
         .padding(.vertical)
     }
     
     private var weatherImageSection: some View {
         Group {
-            if let image = weatherImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 300)
-                    .cornerRadius(12)
-                    .shadow(radius: 10)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white, lineWidth: 2))
-            } else {
-                // Placeholder for image loading state
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(height: 300)
-                    .overlay(Text("Loading image..."))
-            }
+            WebImage(url: URL(string: weatherImageURL ?? "")) 
+                // Supports options and context, like `.delayPlaceholder` to show placeholder only when error
+                .onSuccess { image, data, cacheType in
+                    
+                    // Success
+                    // Note: Data exist only when queried from disk cache or network. Use `.queryMemoryData` if you really need data
+                }.resizable()
+                .indicator(.activity) // Activity Indicator
+                .transition(.fade(duration: 0.5)) // Fade Transition with duration
+                .scaledToFit()
+                .frame(width: 300, height: 300, alignment: .center)
         }
 
     }
 
     private var poemSection: some View {
-        Text(weatherPoem)
+        Text(weatherPoem ?? "")
             .font(.custom("", size: 18)) // 替换为你选择的字体
             .italic() // 如果适用
             .lineSpacing(4) // 调整行间距
@@ -87,7 +100,6 @@ struct WeatherArtView: View {
             )
             .shadow(radius: 5)
             .transition(.opacity)
-            .animation(.easeInOut(duration: 1.0))
     }
 
     private func fetchWeatherArt() {

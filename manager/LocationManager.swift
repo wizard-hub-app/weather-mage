@@ -56,7 +56,7 @@ class LocationManager: NSObject, CLLocationManagerDelegate {
             }
             if let placemark = placemarks?.first, let city = placemark.locality {
                 print("Current city: \(city)")
-                let userInfo = ["city": city]
+                let userInfo = ["city": city, "location": location]
                 NotificationCenter.default.post(name: .purchaseDidFinish, object: nil, userInfo: userInfo)
                 self.cityName = city
                 // 这里你可以将城市名称保存或使用
